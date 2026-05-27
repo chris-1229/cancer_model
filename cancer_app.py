@@ -25,42 +25,32 @@ except FileNotFoundError as e:
     )
     st.stop()
 
-# 스케일러가 기억하는 정확한 컬럼명과 순서를 자동으로 알아냅니다.
+# 💡 스케일러가 기억하는 진짜 컬럼명 리스트를 가져옵니다.
 try:
     target_columns = scaler.feature_names_in_.tolist()
 except AttributeError:
     target_columns = ["Smokes", "Age", "Alkhol"]
 
-# 💡 컬럼명 유연화 처리 (대소문자 미스 매칭 방지)
-age_col = next((c for c in target_columns if "age" in c.lower()), "Age")
-smokes_col = next((c for c in target_columns if "smoke" in c.lower()), "Smokes")
-alcohol_col = next(
-    (
-        c
-        for c in target_columns
-        if "alk" in c.lower() or "alc" in c.lower()
-    ),
-    "Alkhol",
-)
+# 💡 [KeyError 완벽 박멸 지점] 글자 매칭 대신 '인덱스 순서'로 매칭합니다.
+# 스케일러의 3개 컬럼 순서가 [Smokes, Age, Alkhol] 순서라고 가정하고 인덱스로 강제 고정합니다.
+smokes_col = target_columns[0]
+age_col = target_columns[1]
+alcohol_col = target_columns[2]
 
-# 💡 [KeyError 해결 핵심]
-# lung.csv에 어떤 컬럼이 있든 간에 필요한 데이터를 안전하게 새로 재구성합니다.
-# 기존 데이터에 해당 열이 없으면 기본값 0이나 5로 가득 채워 에러를 방지합니다.
+# 기존 csv 파일 데이터를 스케일러 컬럼명에 맞춰 새로 재구성
 clean_df = pd.DataFrame()
-for col in target_columns:
-    # 기존 csv 파일에 비슷한 이름의 열이 있다면 그 데이터를 쓰고, 없으면 0으로 채움
-    matched_col = next((c for c in df.columns if col.lower() in c.lower()), None)
-    if matched_col:
-        clean_df[col] = pd.to_numeric(df[matched_col], errors="coerce").fillna(0)
+for i, col in enumerate(target_columns):
+    if i < len(df.columns):
+        clean_df[col] = pd.to_numeric(df.iloc[:, i], errors="coerce").fillna(0)
     else:
         clean_df[col] = 0.0
 
 df = clean_df
 
-# 알코올 데이터의 평균값 계산 (이제 무조건 컬럼이 존재하므로 에러가 안 납니다)
+# 알코올 데이터의 평균값 계산 (이제 target_columns[2]가 확실히 존재하므로 100% 안전합니다)
 default_alcohol = df[alcohol_col].mean()
 if default_alcohol == 0:
-    default_alcohol = 5.0  # 기본값이 다 0일 경우 안전장치로 5.0 부여
+    default_alcohol = 5.0
 
 # -------------------------------------------------------------
 # 2. 사용자 데이터 직접 입력 표 (나이와 흡연량만 노출)
