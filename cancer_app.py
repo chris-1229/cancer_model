@@ -70,44 +70,42 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         # -------------------------------------------------------------
         # 4. 내장 기능을 이용한 시각화 (Matplotlib/Seaborn 대체)
         # -------------------------------------------------------------
-      st.write("---")
-st.subheader("📊 군집 내 환자 위치 시각화")
+        st.write("---")
+        st.subheader("📊 군집 내 환자 위치 시각화")
 
-# lung.csv에 있는 실제 컬럼명 3개를 자동으로 가져옵니다. 
-# (단, csv의 첫 3개 컬럼이 학습에 사용된 '흡연, 나이, 알코올' 순서여야 합니다)
-csv_columns = df.columns[:3].tolist() 
+        # 기존 전체 데이터의 군집 결과 구하기 (배경용)
+        if "군집" not in df.columns:
+            df_scaled = scaler.transform(df[["흡연", "나이", "알코올"]])
+            df["군집"] = model.predict(df_scaled)
 
-# 기존 전체 데이터의 군집 결과 구하기 (배경용)
-if "군집" not in df.columns:
-    # 💡 묻지도 따지지도 않고 csv에 있는 실제 컬럼명으로 transform을 진행합니다.
-    df_scaled = scaler.transform(df[csv_columns])
-    df["군집"] = model.predict(df_scaled)
+        # 기존 데이터에도 유형 태그 달기 (군집명을 문자열로 변환하여 시각화 범례 최적화)
+        chart_df = df.copy()
+        chart_df["데이터 유형"] = chart_df["군집"].apply(
+            lambda x: f"기존 데이터 (군집 {x})"
+        )
 
-# 기존 데이터 타입 태그 달기
-chart_df = df.copy()
-chart_df["데이터 유형"] = chart_df["군집"].apply(lambda x: f"기존 데이터 (군집 {x})")
+        # 기존 데이터와 신규 데이터를 하나로 합치기
+        # 신규 입력 데이터의 '데이터 유형'은 '신규 입력 환자'로 유지됨
+        combined_df = pd.concat([chart_df, result_df], ignore_index=True)
 
-# 입력한 에디터 데이터(edited_df)의 컬럼명도 csv와 강제로 일치시켜 병합 에러를 방지합니다.
-renamed_edited_df = edited_df.copy()
-renamed_edited_df.columns = csv_columns
-renamed_edited_df["데이터 유형"] = "신규 입력 환자"
+        # 축 선택 인터페이스
+        col1, col2 = st.columns(2)
+        with col1:
+            x_axis = st.selectbox(
+                "X축 선택", ["흡연", "나이", "알코올"], index=0
+            )
+        with col2:
+            y_axis = st.selectbox(
+                "Y축 선택", ["흡연", "나이", "알코올"], index=1
+            )
 
-# 기존 데이터와 신규 데이터 병합
-combined_df = pd.concat([chart_df, renamed_edited_df], ignore_index=True)
-
-# 축 선택 인터페이스 (실제 컬럼명 리스트를 넣어줌)
-col1, col2 = st.columns(2)
-with col1:
-    x_axis = st.selectbox("X축 선택", csv_columns, index=0)
-with col2:
-    y_axis = st.selectbox("Y축 선택", csv_columns, index=1)
-
-# 차트 출력
-st.scatter_chart(
-    data=combined_df,
-    x=x_axis,
-    y=y_axis,
-    color="데이터 유형",
-    size="데이터 유형",
-    use_container_width=True,
-)
+        # Streamlit 내장 산점도(Scatter Chart) 그리기
+        # 별도의 한글 폰트 설정 없이도 글자가 깨지지 않습니다.
+        st.scatter_chart(
+            data=combined_df,
+            x=x_axis,
+            y=y_axis,
+            color="데이터 유형",  # 기존 군집들과 신규 환자가 색상으로 구분됨
+            size="데이터 유형",  # 신규 입력 환자를 더 크게 띄우기 위한 트릭
+            use_container_width=True,
+        )
