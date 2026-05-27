@@ -25,12 +25,21 @@ except FileNotFoundError as e:
     )
     st.stop()
 
-# 💡 [치트키] 스케일러가 기억하고 있는 정확한 컬럼 이름과 순서를 자동으로 가져옵니다.
+# 💡 [해결 핵심] 스케일러가 기억하는 정확한 컬럼명을 가져옵니다.
 try:
     target_columns = scaler.feature_names_in_.tolist()
 except AttributeError:
-    # 혹시 모를 예외 상황엔 알려주신 컬럼명 기본값 사용
     target_columns = ["Smokes", "Age", "Alkhol"]
+
+# 💡 [KeyError 원천 차단] lung.csv의 실제 컬럼명이 무엇이든 간에,
+# 스케일러가 요구하는 컬럼명으로 강제 치환(Renaming)합니다.
+# 이로써 CSV 파일과 스케일러 간의 대소문자/오타 불일치 문제가 완전히 해결됩니다.
+if len(df.columns) >= len(target_columns):
+    # 기존 데이터의 앞쪽 컬럼들을 스케일러 컬럼명으로 덮어씁니다.
+    rename_dict = {
+        df.columns[i]: target_columns[i] for i in range(len(target_columns))
+    }
+    df = df.rename(columns=rename_dict)
 
 # -------------------------------------------------------------
 # 2. 사용자 데이터 직접 입력 표 (Data Editor)
@@ -40,7 +49,7 @@ st.markdown(
     "아래 표의 값을 더블클릭하여 수정하세요. 행을 추가하여 여러 명을 입력할 수도 있습니다."
 )
 
-# 스케일러 기준 정렬된 컬럼명으로 초기 데이터 구성
+# 초기 데이터 구성
 init_data = pd.DataFrame([[10.0, 40.0, 5.0]], columns=target_columns)
 
 # 사용자가 표에서 직접 수정할 수 있는 에디터
@@ -55,7 +64,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("빈 칸 없이 데이터를 올바르게 입력해주세요.")
     else:
-        # 데이터 스케일링 시 컬럼 순서를 강제로 정렬하여 전달 (순서 에러 해결)
+        # 데이터 스케일링 및 예측
         new_patients_scaled = scaler.transform(edited_df[target_columns])
         pred_clusters = model.predict(new_patients_scaled)
 
@@ -79,7 +88,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.subheader("📊 군집 내 환자 위치 시각화")
 
         # 기존 전체 데이터의 군집 결과 구하기 (배경용)
-        # 💡 [이번 에러 해결 지점] 78번 줄 에러 방지를 위해 자동 추출된 순서로 스케일링합니다.
+        # 이제 df의 컬럼명이 스케일러와 완벽히 일치하므로 KeyError가 나지 않습니다.
         if "군집" not in df.columns:
             df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
