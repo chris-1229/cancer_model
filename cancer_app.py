@@ -77,23 +77,22 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.dataframe(result_df, use_container_width=True)
 
         # -------------------------------------------------------------
-        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량) - 에러 수정 버전
+        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량)
         # -------------------------------------------------------------
         st.write("---")
         st.subheader("📍 환자 위치 시각화 (나이 vs 흡연량)")
 
-        # 기존 전체 데이터 군집 부여
+        # 💡 [순서 교정] 배경 데이터를 추출하기 전에, '군집' 컬럼을 먼저 생성합니다.
         if "군집" not in df.columns:
             df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
 
-        # 시각화용 데이터 독립 추출 (불필요한 컬럼이나 인덱스가 꼬이는 현상 방지)
+        # 💡 '군집' 컬럼이 무조건 생성된 상태이므로 이제 KeyError가 발생하지 않습니다.
         bg_data = df[["Age", "Smokes", "군집"]].copy()
         user_data = result_df[["Age", "Smokes"]].copy()
 
         import altair as alt
 
-        # 💡 [핵심 해결 지점] 컬럼 이름 뒤에 수치형 데이터를 의미하는 :Q 를 붙여 문법 오류를 차단합니다.
         # 1) 배경: 기존 환자 분포 (작고 반투명한 원)
         bg_chart = (
             alt.Chart(bg_data)
@@ -128,5 +127,5 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
             width=700, height=450
         )
 
-        # 화면에 에러 없이 안전하게 출력
+        # 화면에 안정적으로 출력
         st.altair_chart(final_chart, use_container_width=True)
