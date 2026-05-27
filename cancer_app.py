@@ -29,17 +29,18 @@ except FileNotFoundError as e:
     st.error(f"필수 파일이 누락되었습니다: {e.filename}. 파일 위치를 확인해주세요.")
     st.stop()
 
-# 스케일러 기준 컬럼명 강제 추출 및 매칭
+# 스케일러 기준 컬럼명 강제 추출
 try:
     target_columns = scaler.feature_names_in_.tolist()
 except AttributeError:
     target_columns = ["Smokes", "Age", "Alkhol"]
 
+# 컬럼 순서 고정 매칭
 smokes_col = target_columns[0]
 age_col = target_columns[1]
 alcohol_col = target_columns[2]
 
-# 기존 CSV 정제 데이터프레임 빌드
+# 기존 CSV 데이터 정제
 clean_df = pd.DataFrame()
 for i, col in enumerate(target_columns):
     if i < len(df.columns):
@@ -48,22 +49,22 @@ for i, col in enumerate(target_columns):
         clean_df[col] = 0.0
 df = clean_df
 
-# 💡 [KeyError 완벽 해결 지점] 
-# 에러를 유발하던 if-else 구문을 지우고, try-except 구조로 안전하게 평균값을 가져옵니다.
+# 💡 [변경점] 이제 '흡연량' 데이터의 평균값을 구해 자동 입력용 기본값으로 씁니다.
 try:
-    default_alcohol = df[alcohol_col].mean()
-    if default_alcohol == 0:
-        default_alcohol = 5.0
+    default_smokes = df[smokes_col].mean()
+    if default_smokes == 0:
+        default_smokes = 10.0
 except Exception:
-    default_alcohol = 5.0
+    default_smokes = 10.0
 
 # -------------------------------------------------------------
-# 2. 환자 데이터 입력 (나이와 흡연량)
+# 2. 환자 데이터 입력 (나이와 알코올로 변경)
 # -------------------------------------------------------------
 st.subheader("📝 신규 환자 데이터 입력")
 
-user_input_columns = [age_col, smokes_col]
-init_data = pd.DataFrame([[40.0, 10.0]], columns=user_input_columns)
+# 💡 입력 창을 나이(Age)와 알코올(Alkhol)로 변경했습니다.
+user_input_columns = [age_col, alcohol_col]
+init_data = pd.DataFrame([[40.0, 5.0]], columns=user_input_columns)
 
 edited_df = st.data_editor(
     init_data, num_rows="dynamic", use_container_width=True, key="input_editor"
@@ -76,11 +77,11 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("모든 칸에 숫자를 입력해주세요.")
     else:
-        # 입력받은 데이터에 알코올 기본값 채워 넣기
+        # 입력받은 데이터에 흡연량 기본값 자동 채워 넣기
         process_df = edited_df.copy()
-        process_df[alcohol_col] = default_alcohol
+        process_df[smokes_col] = default_smokes
         
-        # 스케일러 정렬 기준 컬럼 순서 맞추기
+        # 스케일러가 요구하는 순서대로 열 정렬
         process_df = process_df[target_columns]
 
         # 데이터 변환 및 모델 예측
@@ -88,7 +89,7 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
         input_scaled = scaler.transform(numeric_input)
         pred_clusters = model.predict(input_scaled)
 
-        # 결과 테이블 화면에 뿌리기
+        # 결과 테이블 구성
         result_df = edited_df.copy()
         result_df["예측 군집"] = pred_clusters
         
@@ -109,28 +110,34 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
             st.success(f"✅ 진단 결과: **{top_status}** 입니다. 현재 상태를 유지하세요.")
 
         # -------------------------------------------------------------
-        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량)
+        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 알코올)
         # -------------------------------------------------------------
         st.write("---")
-        st.subheader("📍 환자 데이터 시각화 (나이 vs 흡연량)")
+        st.subheader("📍 환자 데이터 시각화 (나이 vs 알코올)")
 
         if "군집" not in df.columns:
             df_scaled = scaler.transform(df[target_columns].values.astype(float))
             df["군집"] = model.predict(df_scaled)
 
-        bg_data = df[[age_col, smokes_col, "군집"]].copy()
-        user_data = result_df[[age_col, smokes_col]].copy()
+        # 💡 차트용 데이터를 나이와 알코올로 추출
+        bg_data = df[[age_col, alcohol_col, "군집"]].copy()
+        user_data = result_df[[age_col, alcohol_col]].copy()
 
         import altair as alt
 
+        # 1) 배경: 기존 환자 분포 (Y축이 알코올로 변경)
         bg_chart = alt.Chart(bg_data).mark_circle(size=60, opacity=0.3).encode(
             x=alt.X(f"{age_col}:Q", title="나이 (Age)"),
-            y=alt.Y(f"{smokes_col}:Q", title="흡연량 (Smoking)"),
+            y=alt.Y(f"{alcohol_col}:Q", title="알코올 섭취량 (Alcohol)"),
             color=alt.Color("군집:N", scale=alt.Scale(scheme="set2"), legend=alt.Legend(title="기존 군집"))
         )
 
+        # 2) 강조: 신규 환자 빨간 X 마크 (Y축이 알코올로 변경)
         new_chart = alt.Chart(user_data).mark_point(
             size=400, color="red", filled=True, shape="cross", stroke="black", strokeWidth=2
-        ).encode(x=f"{age_col}:Q", y=f"{smokes_col}:Q")
+        ).encode(x=f"{age_col}:Q", y=f"{alcohol_col}:Q")
 
-        st.altair_chart((bg_chart + new_chart).properties(width=700, height=400), use_container_width=True)
+        # 3) 차트 합치기
+        final_chart = (bg_chart + new_chart).properties(width=700, height=400)
+
+        st.altair_chart(final_chart, use_container_width=True)
