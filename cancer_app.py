@@ -66,7 +66,8 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         input_data_scaled = edited_df[target_columns].apply(
             pd.to_numeric, errors="coerce"
         )
-        pred_clusters = model.predict(new_patients_scaled := scaler.transform(input_data_scaled))
+        new_patients_scaled = scaler.transform(input_data_scaled)
+        pred_clusters = model.predict(new_patients_scaled)
 
         result_df = edited_df.copy()
         result_df["예측 군집"] = pred_clusters
@@ -76,24 +77,20 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.dataframe(result_df, use_container_width=True)
 
         # -------------------------------------------------------------
-        # 4. 이미지와 똑같은 스타일의 고급 시각화 (Altair 활용 트릭)
+        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량)
         # -------------------------------------------------------------
         st.write("---")
-        st.subheader("📍 환자 위치 시각화")
+        st.subheader("📍 환자 위치 시각화 (나이 vs 흡연량)")
 
         # 기존 전체 데이터 군집 부여
         if "군집" not in df.columns:
             df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
 
-        # 축 선택 인터페이스
-        col1, col2 = st.columns(2)
-        with col1:
-            x_axis = st.selectbox("X축 선택", target_columns, index=1)  # 기본 나이(Age)
-        with col2:
-            y_axis = st.selectbox("Y축 선택", target_columns, index=0)  # 기본 흡연(Smokes)
+        # 💡 요청사항: 축 선택 셀렉트박스를 완전히 제거하고 이미지와 똑같이 고정
+        x_axis = "Age"  # X축 고정
+        y_axis = "Smokes"  # Y축 고정
 
-        # 💡 [핵심 연출] 추가 설치 없이 고급 레이어 그래프를 그리기 위해 내부 가벼운 컴포넌트(Altair) 연동 기술 사용
         import altair as alt
 
         # 1) 배경: 기존 환자들 (작고 반투명한 원형 분포)
@@ -101,12 +98,12 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
             alt.Chart(df)
             .mark_circle(size=60, opacity=0.4)
             .encode(
-                x=alt.X(x_axis, title=f"{x_axis}"),
-                y=alt.Y(y_axis, title=f"{y_axis}"),
+                x=alt.X(x_axis, title="나이 (Age)"),
+                y=alt.Y(y_axis, title="흡연량 (Smoking Amount)"),
                 color=alt.Color(
                     "군집:N",
                     scale=alt.Scale(scheme="set2"),
-                    legend=alt.Legend(title="기존 군집 분포"),
+                    legend=alt.Legend(title="기존 군집"),
                 ),
             )
         )
@@ -118,17 +115,17 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
                 size=350,
                 color="red",
                 filled=True,
-                shape="cross",
+                shape="cross",  # 이미지와 똑같은 X 모양 마크
                 stroke="black",
                 strokeWidth=1.5,
             )
             .encode(x=x_axis, y=y_axis)
         )
 
-        # 3) 두 차트를 하나로 레이어 결합 (+)
+        # 3) 두 차트 결합 및 세부 속성 정의
         final_chart = (bg_chart + new_chart).properties(
             width=700, height=450
         )
 
-        # 화면에 출력
+        # 화면에 고정된 그래프 출력
         st.altair_chart(final_chart, use_container_width=True)
