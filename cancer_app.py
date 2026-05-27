@@ -25,13 +25,10 @@ except FileNotFoundError as e:
     )
     st.stop()
 
-# 스케일러가 기억하는 정확한 컬럼명
-try:
-    target_columns = scaler.feature_names_in_.tolist()
-except AttributeError:
-    target_columns = ["Smokes", "Age", "Alkhol"]
+# 스케일러가 학습 당시 사용했던 3개 컬럼명 지정
+target_columns = ["Smokes", "Age", "Alkhol"]
 
-# CSV 컬럼명 강제 치환 및 숫자 변환
+# 기존 CSV 파일 전처리 (강제 이름 매칭 및 숫자형 변환)
 if len(df.columns) >= len(target_columns):
     rename_dict = {
         df.columns[i]: target_columns[i] for i in range(len(target_columns))
@@ -42,15 +39,22 @@ for col in target_columns:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+# 알코올 데이터의 평균값 계산 (자동 입력용)
+default_alcohol = df["Alkhol"].mean() if "Alkhol" in df.columns else 5.0
+
 # -------------------------------------------------------------
-# 2. 사용자 데이터 직접 입력 표 (Data Editor)
+# 2. 사용자 데이터 직접 입력 표 (나이와 흡연량만 노출)
 # -------------------------------------------------------------
 st.subheader("📝 환자 데이터 입력")
 st.markdown(
-    "아래 표의 값을 더블클릭하여 수정하세요. 행을 추가하여 여러 명을 입력할 수도 있습니다."
+    "아래 표에 **나이**와 **흡연량**을 입력하세요. 행을 추가해 여러 명을 한 번에 입력할 수도 있습니다."
 )
 
-init_data = pd.DataFrame([[10.0, 40.0, 5.0]], columns=target_columns)
+# 💡 사용자는 오직 나이(Age)와 흡연량(Smokes)만 입력합니다.
+user_input_columns = ["Age", "Smokes"]
+init_data = pd.DataFrame([[40.0, 10.0]], columns=user_input_columns)
+
+# 데이터 에디터 출력
 edited_df = st.data_editor(
     init_data, num_rows="dynamic", use_container_width=True
 )
@@ -62,13 +66,20 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("빈 칸 없이 데이터를 올바르게 입력해주세요.")
     else:
-        # 데이터 스케일링 및 예측
-        input_data_scaled = edited_df[target_columns].apply(
-            pd.to_numeric, errors="coerce"
-        )
+        # 💡 [핵심 트릭] 사용자가 입력하지 않은 'Alkhol' 컬럼을 평균값으로 생성해 채워줍니다.
+        # 이렇게 가공해야 머신러닝 스케일러가 ValueError를 내지 않습니다.
+        process_df = edited_df.copy()
+        process_df["Alkhol"] = default_alcohol
+
+        # 스케일러가 요구하는 정확한 컬럼 순서대로 재정렬해 줍니다.
+        process_df = process_df[target_columns]
+
+        # 데이터 스케일링 및 군집 예측 실행
+        input_data_scaled = process_df.apply(pd.to_numeric, errors="coerce")
         new_patients_scaled = scaler.transform(input_data_scaled)
         pred_clusters = model.predict(new_patients_scaled)
 
+        # 결과 화면 구성 (알코올은 숨기고 사용자가 입력한 값과 결과만 보여줍니다)
         result_df = edited_df.copy()
         result_df["예측 군집"] = pred_clusters
 
@@ -82,12 +93,12 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.write("---")
         st.subheader("📍 환자 위치 시각화 (나이 vs 흡연량)")
 
-        # 💡 [순서 교정] 배경 데이터를 추출하기 전에, '군집' 컬럼을 먼저 생성합니다.
+        # 기존 전체 데이터의 군집 결과 미리 채워넣기
         if "군집" not in df.columns:
             df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
 
-        # 💡 '군집' 컬럼이 무조건 생성된 상태이므로 이제 KeyError가 발생하지 않습니다.
+        # 차트용 데이터만 쏙 뽑아오기
         bg_data = df[["Age", "Smokes", "군집"]].copy()
         user_data = result_df[["Age", "Smokes"]].copy()
 
@@ -115,17 +126,17 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
                 size=350,
                 color="red",
                 filled=True,
-                shape="cross",  # X자 형태
+                shape="cross",  # X 모양
                 stroke="black",
                 strokeWidth=1.5,
             )
             .encode(x="Age:Q", y="Smokes:Q")
         )
 
-        # 3) 그래프 결합 및 크기 지정
+        # 3) 차트 합치기
         final_chart = (bg_chart + new_chart).properties(
             width=700, height=450
         )
 
-        # 화면에 안정적으로 출력
+        # 화면에 에러 없이 무조건 출력
         st.altair_chart(final_chart, use_container_width=True)
