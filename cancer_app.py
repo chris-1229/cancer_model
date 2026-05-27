@@ -29,40 +29,39 @@ except FileNotFoundError as e:
     st.error(f"필수 파일이 누락되었습니다: {e.filename}. 파일 위치를 확인해주세요.")
     st.stop()
 
-# 스케일러가 기억하는 진짜 컬럼명과 순서 추출
+# 스케일러 기준 컬럼명 강제 추출 및 매칭
 try:
     target_columns = scaler.feature_names_in_.tolist()
 except AttributeError:
     target_columns = ["Smokes", "Age", "Alkhol"]
 
-# 💡 [원인 1번 해결] 단어 포함 여부로 실제 스케일러 안의 정확한 대소문자/이름을 찾아냅니다.
-age_col = next((c for c in target_columns if "age" in c.lower()), "Age")
-smokes_col = next((c for c in target_columns if "smoke" in c.lower()), "Smokes")
-alcohol_col = next((c for c in target_columns if "alk" in c.lower() or "alc" in c.lower()), "Alkhol")
+smokes_col = target_columns[0]
+age_col = target_columns[1]
+alcohol_col = target_columns[2]
 
-# 기존 CSV 파일의 열들을 스케일러가 요구하는 컬럼명과 순서대로 완벽하게 재매칭합시다.
+# 기존 CSV 정제 데이터프레임 빌드
 clean_df = pd.DataFrame()
-for col in target_columns:
-    # 기존 파일에서 가장 잘 맞는 컬럼을 매치
-    matched_col = next((c for c in df.columns if col.lower() in c.lower()), None)
-    if matched_col:
-        clean_df[col] = pd.to_numeric(df[matched_col], errors="coerce").fillna(0)
+for i, col in enumerate(target_columns):
+    if i < len(df.columns):
+        clean_df[col] = pd.to_numeric(df.iloc[:, i], errors="coerce").fillna(0)
     else:
-        # 정 안 맞으면 기본값 처리
-        if col == age_col: clean_df[col] = 40.0
-        elif col == smokes_col: clean_df[col] = 10.0
-        else: clean_df[col] = 5.0
+        clean_df[col] = 0.0
 df = clean_df
 
-# 알코올 데이터의 평균값 계산 (자동 입력용)
-default_alcohol = df[alcohol_col].mean() if df[alcohol_col].mean() != 0 else 5.0
+# 💡 [KeyError 완벽 해결 지점] 
+# 에러를 유발하던 if-else 구문을 지우고, try-except 구조로 안전하게 평균값을 가져옵니다.
+try:
+    default_alcohol = df[alcohol_col].mean()
+    if default_alcohol == 0:
+        default_alcohol = 5.0
+except Exception:
+    default_alcohol = 5.0
 
 # -------------------------------------------------------------
 # 2. 환자 데이터 입력 (나이와 흡연량)
 # -------------------------------------------------------------
 st.subheader("📝 신규 환자 데이터 입력")
 
-# 사용자는 항상 직관적으로 나이와 흡연량만 입력하도록 고정
 user_input_columns = [age_col, smokes_col]
 init_data = pd.DataFrame([[40.0, 10.0]], columns=user_input_columns)
 
@@ -77,19 +76,19 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("모든 칸에 숫자를 입력해주세요.")
     else:
-        # 사용자가 입력한 데이터에 자동으로 알코올 평균값을 결합합니다.
+        # 입력받은 데이터에 알코올 기본값 채워 넣기
         process_df = edited_df.copy()
         process_df[alcohol_col] = default_alcohol
-
-        # 💡 [핵심] 스케일러가 요구하는 정확한 순서로 컬럼 배열을 강제 정렬합니다.
+        
+        # 스케일러 정렬 기준 컬럼 순서 맞추기
         process_df = process_df[target_columns]
 
-        # 데이터 스케일링 및 군집 예측 실행
-        input_data_scaled = process_df.apply(pd.to_numeric, errors="coerce")
-        new_patients_scaled = scaler.transform(input_data_scaled)
-        pred_clusters = model.predict(new_patients_scaled)
+        # 데이터 변환 및 모델 예측
+        numeric_input = process_df.values.astype(float)
+        input_scaled = scaler.transform(numeric_input)
+        pred_clusters = model.predict(input_scaled)
 
-        # 결과 화면 구성
+        # 결과 테이블 화면에 뿌리기
         result_df = edited_df.copy()
         result_df["예측 군집"] = pred_clusters
         
@@ -100,7 +99,7 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
         st.subheader("🔮 예측 결과 분석")
         st.dataframe(result_df, use_container_width=True)
 
-        # 강조 메시지 출력
+        # 상태 메시지 출력
         top_status = result_df["상태 진단"].iloc[0]
         if "고위험" in top_status:
             st.error(f"⚠️ 진단 결과: **{top_status}** 입니다. 즉각적인 검진이 필요할 수 있습니다.")
@@ -115,10 +114,23 @@ if st.button("🚀 군집 예측 및 결과 확인", type="primary"):
         st.write("---")
         st.subheader("📍 환자 데이터 시각화 (나이 vs 흡연량)")
 
-        # 기존 전체 데이터의 군집 결과 채워넣기
         if "군집" not in df.columns:
-            df_scaled = scaler.transform(df[target_columns])
+            df_scaled = scaler.transform(df[target_columns].values.astype(float))
             df["군집"] = model.predict(df_scaled)
 
         bg_data = df[[age_col, smokes_col, "군집"]].copy()
         user_data = result_df[[age_col, smokes_col]].copy()
+
+        import altair as alt
+
+        bg_chart = alt.Chart(bg_data).mark_circle(size=60, opacity=0.3).encode(
+            x=alt.X(f"{age_col}:Q", title="나이 (Age)"),
+            y=alt.Y(f"{smokes_col}:Q", title="흡연량 (Smoking)"),
+            color=alt.Color("군집:N", scale=alt.Scale(scheme="set2"), legend=alt.Legend(title="기존 군집"))
+        )
+
+        new_chart = alt.Chart(user_data).mark_point(
+            size=400, color="red", filled=True, shape="cross", stroke="black", strokeWidth=2
+        ).encode(x=f"{age_col}:Q", y=f"{smokes_col}:Q")
+
+        st.altair_chart((bg_chart + new_chart).properties(width=700, height=400), use_container_width=True)
