@@ -77,7 +77,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.dataframe(result_df, use_container_width=True)
 
         # -------------------------------------------------------------
-        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량)
+        # 4. 이미지 맞춤형 고정 시각화 (나이 vs 흡연량) - 에러 수정 버전
         # -------------------------------------------------------------
         st.write("---")
         st.subheader("📍 환자 위치 시각화 (나이 vs 흡연량)")
@@ -87,19 +87,20 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
             df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
 
-        # 💡 요청사항: 축 선택 셀렉트박스를 완전히 제거하고 이미지와 똑같이 고정
-        x_axis = "Age"  # X축 고정
-        y_axis = "Smokes"  # Y축 고정
+        # 시각화용 데이터 독립 추출 (불필요한 컬럼이나 인덱스가 꼬이는 현상 방지)
+        bg_data = df[["Age", "Smokes", "군집"]].copy()
+        user_data = result_df[["Age", "Smokes"]].copy()
 
         import altair as alt
 
-        # 1) 배경: 기존 환자들 (작고 반투명한 원형 분포)
+        # 💡 [핵심 해결 지점] 컬럼 이름 뒤에 수치형 데이터를 의미하는 :Q 를 붙여 문법 오류를 차단합니다.
+        # 1) 배경: 기존 환자 분포 (작고 반투명한 원)
         bg_chart = (
-            alt.Chart(df)
+            alt.Chart(bg_data)
             .mark_circle(size=60, opacity=0.4)
             .encode(
-                x=alt.X(x_axis, title="나이 (Age)"),
-                y=alt.Y(y_axis, title="흡연량 (Smoking Amount)"),
+                x=alt.X("Age:Q", title="나이 (Age)"),
+                y=alt.Y("Smokes:Q", title="흡연량 (Smoking Amount)"),
                 color=alt.Color(
                     "군집:N",
                     scale=alt.Scale(scheme="set2"),
@@ -108,24 +109,24 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
             )
         )
 
-        # 2) 강조: 새로 입력한 환자 (크고 선명한 빨간색 'X' 마크)
+        # 2) 강조: 신규 환자 (크고 불투명한 빨간 X 마크)
         new_chart = (
-            alt.Chart(result_df)
+            alt.Chart(user_data)
             .mark_point(
                 size=350,
                 color="red",
                 filled=True,
-                shape="cross",  # 이미지와 똑같은 X 모양 마크
+                shape="cross",  # X자 형태
                 stroke="black",
                 strokeWidth=1.5,
             )
-            .encode(x=x_axis, y=y_axis)
+            .encode(x="Age:Q", y="Smokes:Q")
         )
 
-        # 3) 두 차트 결합 및 세부 속성 정의
+        # 3) 그래프 결합 및 크기 지정
         final_chart = (bg_chart + new_chart).properties(
             width=700, height=450
         )
 
-        # 화면에 고정된 그래프 출력
+        # 화면에 에러 없이 안전하게 출력
         st.altair_chart(final_chart, use_container_width=True)
