@@ -25,6 +25,9 @@ except FileNotFoundError as e:
     )
     st.stop()
 
+# 💡 실제 CSV 및 모델 컬럼명 정의
+target_columns = ["Smokes", "Age", "Alkhol"]
+
 # -------------------------------------------------------------
 # 2. 사용자 데이터 직접 입력 표 (Data Editor)
 # -------------------------------------------------------------
@@ -33,11 +36,8 @@ st.markdown(
     "아래 표의 값을 더블클릭하여 수정하세요. 행을 추가하여 여러 명을 입력할 수도 있습니다."
 )
 
-# 💡 [컬럼명 변경] CSV 파일에 맞게 영어 컬럼명으로 초기 데이터를 구성합니다.
-# (필요시 실제 lung.csv의 대소문자와 똑같이 맞춰주세요)
-init_data = pd.DataFrame(
-    [[10.0, 40.0, 5.0]], columns=["Smokes", "Age", "Alcohol"]
-)
+# 💡 실제 컬럼명 구조와 일치하는 초기 데이터 구성
+init_data = pd.DataFrame([[10.0, 40.0, 5.0]], columns=target_columns)
 
 # 사용자가 표에서 직접 수정할 수 있는 에디터
 edited_df = st.data_editor(
@@ -51,7 +51,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("빈 칸 없이 데이터를 올바르게 입력해주세요.")
     else:
-        # 데이터 스케일링 및 예측 (영어 컬럼명 상태로 transform 진행)
+        # 데이터 스케일링 및 예측 (순서와 이름이 일치하므로 ValueError 해결)
         new_patients_scaled = scaler.transform(edited_df)
         pred_clusters = model.predict(new_patients_scaled)
 
@@ -76,9 +76,9 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.subheader("📊 군집 내 환자 위치 시각화")
 
         # 기존 전체 데이터의 군집 결과 구하기 (배경용)
-        # 💡 [에러 해결 point] '흡연, 나이, 알코올' 대신 영어 컬럼명을 명시합니다.
+        # 💡 [KeyError 해결] 정의된 정확한 영어 컬럼명 사용
         if "군집" not in df.columns:
-            df_scaled = scaler.transform(df[["Smoking", "Age", "Alcohol"]])
+            df_scaled = scaler.transform(df[target_columns])
             df["군집"] = model.predict(df_scaled)
 
         # 기존 데이터 타입 태그 달기
@@ -90,16 +90,12 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         # 기존 데이터와 신규 입력 데이터 합치기
         combined_df = pd.concat([chart_df, result_df], ignore_index=True)
 
-        # 축 선택 인터페이스 (영어 컬럼명 리스트로 명시)
+        # 축 선택 인터페이스 (정확한 영어 컬럼명 리스트 활용)
         col1, col2 = st.columns(2)
         with col1:
-            x_axis = st.selectbox(
-                "X축 선택", ["Smoking", "Age", "Alcohol"], index=0
-            )
+            x_axis = st.selectbox("X축 선택", target_columns, index=0)
         with col2:
-            y_axis = st.selectbox(
-                "Y축 선택", ["Smoking", "Age", "Alcohol"], index=1
-            )
+            y_axis = st.selectbox("Y축 선택", target_columns, index=1)
 
         # Streamlit 내장 산점도 차트 그리기
         st.scatter_chart(
