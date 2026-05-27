@@ -25,9 +25,6 @@ except FileNotFoundError as e:
     )
     st.stop()
 
-# 💡 [자동 인식] lung.csv 파일에서 데이터 학습에 사용된 첫 3개 컬럼명을 자동으로 가져옵니다.
-csv_columns = df.columns[:3].tolist()
-
 # -------------------------------------------------------------
 # 2. 사용자 데이터 직접 입력 표 (Data Editor)
 # -------------------------------------------------------------
@@ -36,8 +33,11 @@ st.markdown(
     "아래 표의 값을 더블클릭하여 수정하세요. 행을 추가하여 여러 명을 입력할 수도 있습니다."
 )
 
-# 초기 예시 데이터 구성 (CSV 파일의 실제 컬럼명과 자동으로 일치시킵니다)
-init_data = pd.DataFrame([[10.0, 40.0, 5.0]], columns=csv_columns)
+# 💡 [컬럼명 변경] CSV 파일에 맞게 영어 컬럼명으로 초기 데이터를 구성합니다.
+# (필요시 실제 lung.csv의 대소문자와 똑같이 맞춰주세요)
+init_data = pd.DataFrame(
+    [[10.0, 40.0, 5.0]], columns=["Smoking", "Age", "Alcohol"]
+)
 
 # 사용자가 표에서 직접 수정할 수 있는 에디터
 edited_df = st.data_editor(
@@ -51,7 +51,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
     if edited_df.empty or edited_df.isnull().values.any():
         st.error("빈 칸 없이 데이터를 올바르게 입력해주세요.")
     else:
-        # 데이터 스케일링 및 예측
+        # 데이터 스케일링 및 예측 (영어 컬럼명 상태로 transform 진행)
         new_patients_scaled = scaler.transform(edited_df)
         pred_clusters = model.predict(new_patients_scaled)
 
@@ -59,7 +59,7 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         result_df = edited_df.copy()
         result_df["예측 군집"] = pred_clusters
 
-        # 💡 시각화 구분을 위해 신규 데이터에 유형 태그 달기
+        # 시각화 구분을 위해 신규 데이터에 유형 태그 달기
         result_df["데이터 유형"] = "신규 입력 환자"
 
         st.write("---")
@@ -76,12 +76,12 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         st.subheader("📊 군집 내 환자 위치 시각화")
 
         # 기존 전체 데이터의 군집 결과 구하기 (배경용)
-        # 💡 에러가 났던 부분: csv에서 자동으로 추출한 컬럼명을 넣어줍니다.
+        # 💡 [에러 해결 point] '흡연, 나이, 알코올' 대신 영어 컬럼명을 명시합니다.
         if "군집" not in df.columns:
-            df_scaled = scaler.transform(df[csv_columns])
+            df_scaled = scaler.transform(df[["Smoking", "Age", "Alcohol"]])
             df["군집"] = model.predict(df_scaled)
 
-        # 기존 데이터 타입 태그 달기 (군집 번호를 시각화 범례에 예쁘게 노출)
+        # 기존 데이터 타입 태그 달기
         chart_df = df.copy()
         chart_df["데이터 유형"] = chart_df["군집"].apply(
             lambda x: f"기존 데이터 (군집 {x})"
@@ -90,19 +90,23 @@ if st.button("🚀 군집 예측 및 시각화 실행", type="primary"):
         # 기존 데이터와 신규 입력 데이터 합치기
         combined_df = pd.concat([chart_df, result_df], ignore_index=True)
 
-        # 축 선택 인터페이스 (실제 컬럼명 리스트 활용)
+        # 축 선택 인터페이스 (영어 컬럼명 리스트로 명시)
         col1, col2 = st.columns(2)
         with col1:
-            x_axis = st.selectbox("X축 선택", csv_columns, index=0)
+            x_axis = st.selectbox(
+                "X축 선택", ["Smoking", "Age", "Alcohol"], index=0
+            )
         with col2:
-            y_axis = st.selectbox("Y축 선택", csv_columns, index=1)
+            y_axis = st.selectbox(
+                "Y축 선택", ["Smoking", "Age", "Alcohol"], index=1
+            )
 
         # Streamlit 내장 산점도 차트 그리기
         st.scatter_chart(
             data=combined_df,
             x=x_axis,
             y=y_axis,
-            color="데이터 유형",  # 군집별 색상 및 신규 환자 색상 분리
-            size="데이터 유형",  # 신규 입력 환자를 더 크게 띄우기 위한 장치
+            color="데이터 유형",
+            size="데이터 유형",
             use_container_width=True,
         )
