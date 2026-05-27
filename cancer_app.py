@@ -36,7 +36,7 @@ st.markdown(
 # 💡 [컬럼명 변경] CSV 파일에 맞게 영어 컬럼명으로 초기 데이터를 구성합니다.
 # (필요시 실제 lung.csv의 대소문자와 똑같이 맞춰주세요)
 init_data = pd.DataFrame(
-    [[10.0, 40.0, 5.0]], columns=["Smoking", "Age", "Alcohol"]
+    [[10.0, 40.0, 5.0]], columns=["Smokes", "Age", "Alcohol"]
 )
 
 # 사용자가 표에서 직접 수정할 수 있는 에디터
